@@ -19,17 +19,38 @@ def on_startup():
     global app_graph
     app_graph = build_app_graph()
 
+def _to_bytes(x) -> bytes:
+    if x is None:
+        return b""
+    if isinstance(x, bytes):
+        return x
+    return str(x).encode("utf-8")
 
 def stream_generator(question: str):
-    for step in app_graph.stream({"question": question}):
-        answer = step.get("answer")
-        if answer:
-            print("Streaming answer:", answer, flush=True)
-            yield f"{answer}\n".encode("utf-8")
+    print("generate() called")
+  
+    try:
+        for update in app_graph.stream({"question": question}, stream_mode="updates"):
+        
 
+            for _node, fields in update.items():
+                if not isinstance(fields, dict):
+                    continue
+
+                for key in ("token", "answer", "output", "text", "content"):
+                    if key in fields and fields[key]:
+                        chunk = fields[key]
+                        yield _to_bytes(chunk)
+                msgs = fields.get("messages")
+                if isinstance(msgs, list) and msgs:
+                    last = msgs[-1]
+                    if isinstance(last, dict) and "content" in last and last["content"]:
+                        yield _to_bytes(last["content"])
+    except Exception as e:
+       
+        err = f"\n[Backend error] {type(e).__name__}: {e}\n"
+        yield _to_bytes(err)
 
 @app.post("/query")
-
 def query(req: QueryRequest):
     return StreamingResponse(stream_generator(req.question), media_type="text/plain")
-
